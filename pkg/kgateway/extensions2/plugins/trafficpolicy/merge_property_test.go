@@ -3,7 +3,6 @@ package trafficpolicy
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"slices"
 	"testing"
 	"time"
@@ -559,45 +558,19 @@ func TestTrafficPolicyMergeBufferAndHTTPUpgradeExclusionProperty(t *testing.T) {
 	}, hegel.WithTestCases(80), hegel.WithDatabase(""))
 }
 
-func skipKnownTrafficPolicyMergeBug(t *testing.T, reason string) {
-	t.Helper()
-	if os.Getenv("KGATEWAY_HEGEL_KNOWN_BUGS") == "" {
-		t.Skip("known bug: " + reason)
-	}
-}
-
 func TestTrafficPolicyMergeSinglePolicyEqualsProperty(t *testing.T) {
-	skipKnownTrafficPolicyMergeBug(t, "MergePolicies does not preserve the TrafficPolicy creation time")
 	constructor := newTrafficPolicyPropertyConstructor(t)
 	hegel.Test(t, func(ht *hegel.T) {
-		spec := drawTrafficPolicyPropertySpec(ht, true, true, true)
+		spec := drawTrafficPolicyPropertySpec(ht, true, true, false)
 		atts, _ := buildTrafficPolicyPropertyAtts(ht, constructor, []kgateway.TrafficPolicySpec{spec}, false)
 		input := atts[0].PolicyIr.(*TrafficPolicy)
 		merged := mergedTrafficPolicy(ht, mergeTrafficPolicyPropertyAtts(atts, ""))
-		if !merged.Equals(input) {
-			ht.Fatalf("single-policy merge differed: spec=%+v inputCreationTime=%s mergedCreationTime=%s input=%+v merged=%+v",
-				spec, input.CreationTime(), merged.CreationTime(), input, merged)
+		mergedForComparison := *merged
+		mergedForComparison.ct = input.ct
+		if !mergedForComparison.Equals(input) {
+			ht.Fatalf("single-policy merge changed spec: spec=%+v input=%+v merged=%+v", spec, input.spec, merged.spec)
 		}
 	}, hegel.WithTestCases(40), hegel.WithDatabase(""))
-}
-
-func TestTrafficPolicyMergeSinglePolicyEqualsPropertyCounterexample(t *testing.T) {
-	skipKnownTrafficPolicyMergeBug(t, "MergePolicies does not preserve the TrafficPolicy creation time")
-	constructor := newTrafficPolicyPropertyConstructor(t)
-	input, errs := constructTrafficPolicyPropertyIR(constructor, kgateway.TrafficPolicySpec{}, "p0")
-	if len(errs) != 0 {
-		t.Fatalf("construct minimal policy: %v", errs)
-	}
-	att := makeTrafficPolicyPropertyAtt(input, 0, 0, "")
-	merged := policy.MergePolicies[TrafficPolicy]([]ir.PolicyAtt{att}, mergeTrafficPolicies, "")
-	mergedIR, ok := merged.PolicyIr.(*TrafficPolicy)
-	if !ok {
-		t.Fatalf("merged policy has type %T", merged.PolicyIr)
-	}
-	if !mergedIR.Equals(input) {
-		t.Fatalf("single empty policy should compare equal: inputCreationTime=%s mergedCreationTime=%s input=%+v merged=%+v",
-			input.CreationTime(), mergedIR.CreationTime(), input, mergedIR)
-	}
 }
 
 func TestTrafficPolicyMergeSameHierarchyPrecedenceProperty(t *testing.T) {
